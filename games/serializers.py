@@ -20,6 +20,7 @@ class GameSerializer(serializers.ModelSerializer):
         model = Game
         fields = (
             "id",
+            "code",
             "attempts_used",
             "max_attempts",
             "remaining_attempts",

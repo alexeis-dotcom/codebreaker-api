@@ -33,6 +33,7 @@ class GameAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
+        self.assertEqual(data["game"]["code"], "1234")
         self.assertEqual(data["guess"]["well_placed"], 2)
         self.assertEqual(data["guess"]["misplaced"], 0)
 
@@ -74,6 +75,7 @@ class GameAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         history = response.data["history"]
+        self.assertEqual(response.data["game"]["code"], "1234")
         self.assertEqual(len(history), 2)
         self.assertEqual(history[0]["guess"], "1234")
         self.assertEqual(history[1]["guess"], "4321")
@@ -86,6 +88,7 @@ class GameAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         payload = response.data
         self.assertEqual(payload["id"], game.id)
+        self.assertEqual(payload["code"], "9876")
         self.assertEqual(payload["attempts_used"], 3)
         self.assertEqual(payload["remaining_attempts"], 7)
 
