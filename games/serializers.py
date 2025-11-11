@@ -1,50 +1,75 @@
 from __future__ import annotations
 
-from typing import Iterable, TypedDict
+from rest_framework import serializers
 
-from .models import Game, GameGuess
-
-
-class GamePayload(TypedDict):
-    id: int
-    attempts_used: int
-    max_attempts: int
-    remaining_attempts: int
-    is_solved: bool
-    created_at: str
+from .models import FOUR_DIGIT_VALIDATOR, Game, GameGuess
 
 
-class GuessPayload(TypedDict):
-    id: int
-    game_id: int
-    guess: str
-    well_placed: int
-    misplaced: int
-    created_at: str
+class CodeSerializer(serializers.Serializer):
+    code = serializers.CharField(
+        max_length=4,
+        min_length=4,
+        validators=[FOUR_DIGIT_VALIDATOR],
+    )
 
 
-def serialize_game(game: Game) -> GamePayload:
-    return {
-        "id": game.id,
-        "attempts_used": game.attempts_used,
-        "max_attempts": game.max_attempts,
-        "remaining_attempts": game.remaining_attempts,
-        "is_solved": game.is_solved,
-        "created_at": game.created_at.isoformat(),
-    }
+class GameSerializer(serializers.ModelSerializer):
+    remaining_attempts = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Game
+        fields = (
+            "id",
+            "attempts_used",
+            "max_attempts",
+            "remaining_attempts",
+            "is_solved",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    def get_remaining_attempts(self, obj: Game) -> int:
+        return obj.remaining_attempts
 
 
-def serialize_guess(guess: GameGuess) -> GuessPayload:
-    return {
-        "id": guess.id,
-        "game_id": guess.game_id,
-        "guess": guess.guess,
-        "well_placed": guess.well_placed,
-        "misplaced": guess.misplaced,
-        "created_at": guess.created_at.isoformat(),
-    }
+class GameResponseSerializer(serializers.Serializer):
+    game = GameSerializer()
+    
+    def to_representation(self, instance: dict[str, object]) -> dict[str, object]:
+        game = instance.get("game")
+        return {
+            "game": GameSerializer(game).data,
+        }
+
+class GuessSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GameGuess
+        fields = ("id", "game_id", "guess", "well_placed", "misplaced", "created_at")
+        read_only_fields = fields
 
 
-def serialize_guess_history(guesses: Iterable[GameGuess]) -> list[GuessPayload]:
-    return [serialize_guess(guess) for guess in guesses]
+class GuessResponseSerializer(serializers.Serializer):
+    game = GameSerializer()
+    guess = GuessSerializer()
+
+    def to_representation(self, instance: dict[str, object]) -> dict[str, object]:
+        game = instance.get("game")
+        guess = instance.get("guess")
+        return {
+            "game": GameSerializer(game).data,
+            "guess": GuessSerializer(guess).data,
+        }
+
+
+class GuessHistoryResponseSerializer(serializers.Serializer):
+    game = GameSerializer()
+    history = GuessSerializer(many=True)
+
+    def to_representation(self, instance: dict[str, object]) -> dict[str, object]:
+        game = instance.get("game")
+        history = instance.get("history", [])
+        return {
+            "game": GameSerializer(game).data,
+            "history": GuessSerializer(history, many=True).data,
+        }
 

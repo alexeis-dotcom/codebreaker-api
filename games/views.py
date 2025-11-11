@@ -1,68 +1,64 @@
-import json
+from typing import Mapping
 
 from django.db import DatabaseError, transaction
-from django.http import HttpRequest, JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-from .forms import CodeForm
 from .models import Game, GameGuess
-from .serializers import serialize_game, serialize_guess, serialize_guess_history
+from .serializers import (
+    CodeSerializer,
+    GameResponseSerializer,
+    GuessHistoryResponseSerializer,
+    GuessResponseSerializer,
+    GuessSerializer,
+)
 from .services import evaluate_guess
 
 
-def _validate_code(payload: dict[str, object]) -> tuple[str, JsonResponse | None]:
-    form = CodeForm(payload)
-    if not form.is_valid():
-        errors = form.errors.get("code")
-        message = errors[0] if errors else "Invalid code."
-        return "", JsonResponse({"error": message}, status=400)
-    return form.cleaned_data["code"], None
+def _validate_code(data: Mapping[str, object]) -> str:
+    serializer = CodeSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data["code"]
 
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def create_game(request: HttpRequest) -> JsonResponse:
-    try:
-        payload = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON body."}, status=400)
-
-    code, error_response = _validate_code(payload)
-    if error_response is not None:
-        return error_response
+@extend_schema(request=CodeSerializer, responses=GameResponseSerializer)
+@api_view(["POST"])
+def create_game(request) -> Response:
+    code = _validate_code(request.data)
 
     try:
         game = Game.objects.create(code=code)
     except DatabaseError:
-        return JsonResponse({"error": "Failed to create game due to database error."}, status=500)
+        return Response(
+            {"error": "Failed to create game due to database error."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
-    return JsonResponse({"id": game.id}, status=201)
+    response_serializer = GameResponseSerializer({"game": game})
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def check_guess(request: HttpRequest, game_id: int) -> JsonResponse:
-    try:
-        payload = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON body."}, status=400)
-
-    code_value, error_response = _validate_code(payload)
-    if error_response is not None:
-        return error_response
+@extend_schema(request=CodeSerializer, responses=GuessResponseSerializer)
+@api_view(["POST"])
+def check_guess(request, game_id: int) -> Response:
+    code_value = _validate_code(request.data)
 
     with transaction.atomic():
-        try:
-            game = Game.objects.select_for_update().get(pk=game_id)
-        except Game.DoesNotExist:
-            return JsonResponse({"error": "Game not found."}, status=404)
+        game = get_object_or_404(Game.objects.select_for_update(), pk=game_id)
 
         if game.is_solved:
-            return JsonResponse({"error": "Game is already solved."}, status=409)
+            return Response(
+                {"error": "Game is already solved."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         if game.attempts_used >= game.max_attempts:
-            return JsonResponse({"error": "Maximum number of attempts reached."}, status=409)
+            return Response(
+                {"error": "Maximum number of attempts reached."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         guess_digits = [int(char) for char in code_value]
         secret_digits = [int(char) for char in game.code]
@@ -80,34 +76,27 @@ def check_guess(request: HttpRequest, game_id: int) -> JsonResponse:
             game.is_solved = True
         game.save(update_fields=["attempts_used", "is_solved"])
 
-    response_payload = {"game": serialize_game(game), "guess": serialize_guess(guess)}
-
-    return JsonResponse(response_payload, status=200)
-
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def guess_history(request: HttpRequest, game_id: int) -> JsonResponse:
-    try:
-        game = Game.objects.prefetch_related("guesses").get(pk=game_id)
-    except Game.DoesNotExist:
-        return JsonResponse({"error": "Game not found."}, status=404)
-
-    guesses = game.guesses.all()
-    response_payload = {"game": serialize_game(game), "history": serialize_guess_history(guesses)}
-
-    return JsonResponse(response_payload, status=200)
+    response_serializer = GuessResponseSerializer({"game": game, "guess": guess})
+    return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
-@csrf_exempt
-@require_http_methods(["GET"])
-def game_detail(request: HttpRequest, game_id: int) -> JsonResponse:
-    try:
-        game = Game.objects.get(pk=game_id)
-    except Game.DoesNotExist:
-        return JsonResponse({"error": "Game not found."}, status=404)
+@extend_schema(responses=GuessHistoryResponseSerializer)
+@api_view(["GET"])
+def guess_history(request, game_id: int) -> Response:
+    game = get_object_or_404(Game.objects.prefetch_related("guesses"), pk=game_id)
+    response_serializer = GuessHistoryResponseSerializer(
+        {
+            "game": game,
+            "history": list(game.guesses.all()),
+        }
+    )
+    return Response(response_serializer.data, status=status.HTTP_200_OK)
 
-    response_payload = serialize_game(game)
 
-    return JsonResponse(response_payload, status=200)
+@extend_schema(responses=GameResponseSerializer)
+@api_view(["GET"])
+def game_detail(request, game_id: int) -> Response:
+    game = get_object_or_404(Game, pk=game_id)
+    serializer = GameResponseSerializer({"game": game})
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
