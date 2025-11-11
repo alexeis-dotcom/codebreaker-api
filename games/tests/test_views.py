@@ -11,8 +11,8 @@ class GameAPITests(APITestCase):
         response = self.client.post("/api/games/", {"code": "1234"}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("game", response.data)
-        self.assertEqual(response.data["game"]["attempts_used"], 0)
+        self.assertEqual(response.data["code"], "1234")
+        self.assertEqual(response.data["attempts_used"], 0)
         self.assertTrue(Game.objects.filter(code="1234").exists())
 
     def test_create_game_invalid_code(self) -> None:
@@ -84,7 +84,7 @@ class GameAPITests(APITestCase):
         response = self.client.get(f"/api/games/{game.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        payload = response.data["game"]
+        payload = response.data
         self.assertEqual(payload["id"], game.id)
         self.assertEqual(payload["attempts_used"], 3)
         self.assertEqual(payload["remaining_attempts"], 7)

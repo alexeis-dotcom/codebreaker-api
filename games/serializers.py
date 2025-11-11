@@ -32,15 +32,6 @@ class GameSerializer(serializers.ModelSerializer):
         return obj.remaining_attempts
 
 
-class GameResponseSerializer(serializers.Serializer):
-    game = GameSerializer()
-    
-    def to_representation(self, instance: dict[str, object]) -> dict[str, object]:
-        game = instance.get("game")
-        return {
-            "game": GameSerializer(game).data,
-        }
-
 class GuessSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameGuess
@@ -52,24 +43,8 @@ class GuessResponseSerializer(serializers.Serializer):
     game = GameSerializer()
     guess = GuessSerializer()
 
-    def to_representation(self, instance: dict[str, object]) -> dict[str, object]:
-        game = instance.get("game")
-        guess = instance.get("guess")
-        return {
-            "game": GameSerializer(game).data,
-            "guess": GuessSerializer(guess).data,
-        }
-
 
 class GuessHistoryResponseSerializer(serializers.Serializer):
     game = GameSerializer()
     history = GuessSerializer(many=True)
-
-    def to_representation(self, instance: dict[str, object]) -> dict[str, object]:
-        game = instance.get("game")
-        history = instance.get("history", [])
-        return {
-            "game": GameSerializer(game).data,
-            "history": GuessSerializer(history, many=True).data,
-        }
 

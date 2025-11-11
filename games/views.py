@@ -1,6 +1,6 @@
 from typing import Mapping
 
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from .models import Game, GameGuess
 from .serializers import (
     CodeSerializer,
-    GameResponseSerializer,
+    GameSerializer,
     GuessHistoryResponseSerializer,
     GuessResponseSerializer,
     GuessSerializer,
@@ -23,21 +23,27 @@ def _validate_code(data: Mapping[str, object]) -> str:
     serializer.is_valid(raise_exception=True)
     return serializer.validated_data["code"]
 
-@extend_schema(tags=["Games"], request=CodeSerializer, responses=GameResponseSerializer)
+
+@extend_schema(tags=["Games"], request=CodeSerializer, responses=GameSerializer)
 @api_view(["POST"])
 def create_game(request) -> Response:
     code = _validate_code(request.data)
 
     try:
         game = Game.objects.create(code=code)
+    except IntegrityError:
+        return Response(
+            {"error": "Failed to create game due to integrity error."},
+            status=status.HTTP_409_CONFLICT,
+        )
     except DatabaseError:
         return Response(
             {"error": "Failed to create game due to database error."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    response_serializer = GameResponseSerializer({"game": game})
-    return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    serializer = GameSerializer(game)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(tags=["Games"], request=CodeSerializer, responses=GuessResponseSerializer)
@@ -85,18 +91,15 @@ def check_guess(request, game_id: int) -> Response:
 def guess_history(request, game_id: int) -> Response:
     game = get_object_or_404(Game.objects.prefetch_related("guesses"), pk=game_id)
     response_serializer = GuessHistoryResponseSerializer(
-        {
-            "game": game,
-            "history": list(game.guesses.all()),
-        }
+        {"game": game, "history": list(game.guesses.all())}
     )
     return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
-@extend_schema(tags=["Games"], responses=GameResponseSerializer)
+@extend_schema(tags=["Games"], responses=GameSerializer)
 @api_view(["GET"])
 def game_detail(request, game_id: int) -> Response:
     game = get_object_or_404(Game, pk=game_id)
-    serializer = GameResponseSerializer({"game": game})
+    serializer = GameSerializer(game)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
