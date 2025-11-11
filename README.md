@@ -16,7 +16,7 @@ Codebreaker API is a Django-based backend for a number guessing game. Players cr
 
 ## Installation
 ```sh
-git clone https://github.com/your-org/codebreaker-api.git
+git clone https://github.com/alexeis-dotcom/codebreaker-api.git
 cd codebreaker-api
 python3 -m venv .venv
 source .venv/bin/activate
