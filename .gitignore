@@ -1,0 +1,9 @@
+# The local environment directory you created (e.g., in the setup steps)
+.venv/
+venv/
+env/
+/bin/
+
+# Pyenv's file that specifies the local Python version
+.python-version
+
