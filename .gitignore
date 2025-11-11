@@ -7,3 +7,9 @@ env/
 # Pyenv's file that specifies the local Python version
 .python-version
 
+# Byte-compiled Python files
+__pycache__/
+*.py[cod]
+
+# SQLite database file
+db.sqlite3
