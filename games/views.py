@@ -23,7 +23,7 @@ def _validate_code(data: Mapping[str, object]) -> str:
     serializer.is_valid(raise_exception=True)
     return serializer.validated_data["code"]
 
-@extend_schema(request=CodeSerializer, responses=GameResponseSerializer)
+@extend_schema(tags=["Games"], request=CodeSerializer, responses=GameResponseSerializer)
 @api_view(["POST"])
 def create_game(request) -> Response:
     code = _validate_code(request.data)
@@ -40,7 +40,7 @@ def create_game(request) -> Response:
     return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(request=CodeSerializer, responses=GuessResponseSerializer)
+@extend_schema(tags=["Games"], request=CodeSerializer, responses=GuessResponseSerializer)
 @api_view(["POST"])
 def check_guess(request, game_id: int) -> Response:
     code_value = _validate_code(request.data)
@@ -80,7 +80,7 @@ def check_guess(request, game_id: int) -> Response:
     return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
-@extend_schema(responses=GuessHistoryResponseSerializer)
+@extend_schema(tags=["Games"], responses=GuessHistoryResponseSerializer)
 @api_view(["GET"])
 def guess_history(request, game_id: int) -> Response:
     game = get_object_or_404(Game.objects.prefetch_related("guesses"), pk=game_id)
@@ -93,7 +93,7 @@ def guess_history(request, game_id: int) -> Response:
     return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
-@extend_schema(responses=GameResponseSerializer)
+@extend_schema(tags=["Games"], responses=GameResponseSerializer)
 @api_view(["GET"])
 def game_detail(request, game_id: int) -> Response:
     game = get_object_or_404(Game, pk=game_id)
