@@ -24,9 +24,13 @@ pip install -r requirements.txt
 ```
 
 ## Configuration
-- Copy `codebreaker/settings.py` to a dedicated production settings module or use environment variables.
-- Set `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, and `DATABASES` via environment variables for production.
-- Example SQLite development settings are already included.
+- Copy `example.env` to `.env` and update the values for your environment.
+  - `DJANGO_SECRET_KEY` – generate a unique value for production.
+  - `DJANGO_DEBUG` – set to `False` in production.
+  - `DJANGO_ALLOWED_HOSTS` – comma-separated list (no spaces) of allowed hosts.
+  - Database variables (`DJANGO_DB_*`) control the default connection; defaults target SQLite.
+- Environment variables are loaded automatically via `python-dotenv` in `codebreaker/settings.py`.
+- For advanced setups, override any additional Django settings using environment variables or dedicated settings modules.
 
 ## Database Setup
 ```sh
@@ -49,10 +53,40 @@ python manage.py runserver
 All endpoints return JSON and use DRF serializers. Swagger docs show request and response schemas.
 
 ## Testing
-Tests use Django’s test runner and DRF’s APIClient:
+Tests use pytest with pytest-django and DRF’s `APIClient`. Activate your virtual environment, then run:
 ```sh
-python manage.py test games.tests
+pytest
 ```
+
+You can also target individual apps or files:
+```sh
+pytest games/tests/test_views.py
+```
+
+## Linting
+Run Flake8 to ensure code style consistency:
+```sh
+flake8
+```
+
+## Docker
+Build and run the API in a container:
+```sh
+docker compose up --build
+```
+
+The service listens on `http://localhost:8000`. Existing `.env` values are loaded automatically. To run management commands inside the container, use:
+```sh
+docker compose run --rm web python manage.py migrate
+```
+
+### Docker + PostgreSQL
+The compose stack includes a `db` service (PostgreSQL 16). Default credentials live in `example.env`; copy to `.env` before starting:
+```sh
+cp example.env .env
+docker compose up --build
+```
+Override `DJANGO_DB_*` or `POSTGRES_*` variables in `.env` as needed for a different database setup.
 
 ## Production Notes
 - Configure a real database (e.g., PostgreSQL) in `DATABASES`

@@ -13,3 +13,11 @@ __pycache__/
 
 # SQLite database file
 db.sqlite3
+db.sqlite3-journal
+
+# Environment variables
+.env
+
+# Testing
+.pytest_cache
+.coverage

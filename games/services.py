@@ -40,4 +40,3 @@ def evaluate_guess(guess: Iterable[int], secret: Iterable[int]) -> GuessEvaluati
             secret_copy[misplaced_index] = -1
 
     return {"well_placed": well_placed, "misplaced": misplaced}
-

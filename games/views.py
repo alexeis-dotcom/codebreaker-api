@@ -1,105 +1,93 @@
-from typing import Mapping
-
-from django.db import DatabaseError, IntegrityError, transaction
-from django.shortcuts import get_object_or_404
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
-from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Game, GameGuess
+from .exceptions import (
+    GameAlreadySolved,
+    GameMaxAttemptsReached,
+)
+from .models import CODE_LENGTH, Game, GameGuess
 from .serializers import (
-    CodeSerializer,
     GameSerializer,
     GuessHistoryResponseSerializer,
+    GuessInputSerializer,
     GuessResponseSerializer,
-    GuessSerializer,
 )
 from .services import evaluate_guess
 
 
-def _validate_code(data: Mapping[str, object]) -> str:
-    serializer = CodeSerializer(data=data)
-    serializer.is_valid(raise_exception=True)
-    return serializer.validated_data["code"]
+class GameViewSet(mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    queryset = Game.objects.all()
+    lookup_field = "pk"
+    serializer_class = GameSerializer
 
+    def get_queryset(self):
+        if getattr(self, "action", None) == "history":
+            return Game.objects.prefetch_related("guesses")
+        return super().get_queryset()
 
-@extend_schema(tags=["Games"], request=CodeSerializer, responses=GameSerializer)
-@api_view(["POST"])
-def create_game(request) -> Response:
-    code = _validate_code(request.data)
+    def get_serializer_class(self):
+        if getattr(self, "action", None) == "guess":
+            return GuessInputSerializer
+        if getattr(self, "action", None) == "history":
+            return GuessHistoryResponseSerializer
+        return GameSerializer
 
-    try:
-        game = Game.objects.create(code=code)
-    except IntegrityError:
-        return Response(
-            {"error": "Failed to create game due to integrity error."},
-            status=status.HTTP_409_CONFLICT,
-        )
-    except DatabaseError:
-        return Response(
-            {"error": "Failed to create game due to database error."},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+    @extend_schema(tags=["Games"], request=GameSerializer, responses=GameSerializer)
+    def create(self, request, *args, **kwargs) -> Response:
+        serializer = GameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    serializer = GameSerializer(game)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
+    @extend_schema(tags=["Games"], responses=GameSerializer)
+    def retrieve(self, request, *args, **kwargs) -> Response:
+        return super().retrieve(request, *args, **kwargs)
 
-
-@extend_schema(tags=["Games"], request=CodeSerializer, responses=GuessResponseSerializer)
-@api_view(["POST"])
-def check_guess(request, game_id: int) -> Response:
-    code_value = _validate_code(request.data)
-
-    with transaction.atomic():
-        game = get_object_or_404(Game.objects.select_for_update(), pk=game_id)
-
-        if game.is_solved:
-            return Response(
-                {"error": "Game is already solved."},
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        if game.attempts_used >= game.max_attempts:
-            return Response(
-                {"error": "Maximum number of attempts reached."},
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        guess_digits = [int(char) for char in code_value]
-        secret_digits = [int(char) for char in game.code]
-        evaluation = evaluate_guess(guess_digits, secret_digits)
-
-        guess = GameGuess.objects.create(
-            game=game,
-            guess=code_value,
-            well_placed=evaluation["well_placed"],
-            misplaced=evaluation["misplaced"],
-        )
-
-        game.attempts_used += 1
-        if evaluation["well_placed"] == 4:
-            game.is_solved = True
-        game.save(update_fields=["attempts_used", "is_solved"])
-
-    response_serializer = GuessResponseSerializer({"game": game, "guess": guess})
-    return Response(response_serializer.data, status=status.HTTP_200_OK)
-
-
-@extend_schema(tags=["Games"], responses=GuessHistoryResponseSerializer)
-@api_view(["GET"])
-def guess_history(request, game_id: int) -> Response:
-    game = get_object_or_404(Game.objects.prefetch_related("guesses"), pk=game_id)
-    response_serializer = GuessHistoryResponseSerializer(
-        {"game": game, "history": list(game.guesses.all())}
+    @extend_schema(
+        tags=["Games"],
+        request=GuessInputSerializer,
+        responses=GuessResponseSerializer,
     )
-    return Response(response_serializer.data, status=status.HTTP_200_OK)
+    @action(detail=True, methods=["post"], url_path="guess", serializer_class=GuessInputSerializer)
+    def guess(self, request, *args, **kwargs) -> Response:
+        serializer = GuessInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        guess_value = serializer.validated_data["guess"]
 
+        with transaction.atomic():
+            game = Game.objects.select_for_update().get(pk=self.kwargs[self.lookup_field])
 
-@extend_schema(tags=["Games"], responses=GameSerializer)
-@api_view(["GET"])
-def game_detail(request, game_id: int) -> Response:
-    game = get_object_or_404(Game, pk=game_id)
-    serializer = GameSerializer(game)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+            if game.is_solved:
+                raise GameAlreadySolved()
 
+            if game.attempts_used >= game.max_attempts:
+                raise GameMaxAttemptsReached()
+
+            guess_digits = [int(char) for char in guess_value]
+            secret_digits = [int(char) for char in game.code]
+            evaluation = evaluate_guess(guess_digits, secret_digits)
+
+            guess = GameGuess.objects.create(
+                game=game,
+                guess=guess_value,
+                well_placed=evaluation["well_placed"],
+                misplaced=evaluation["misplaced"],
+            )
+
+            game.attempts_used += 1
+            if evaluation["well_placed"] == CODE_LENGTH:
+                game.is_solved = True
+            game.save(update_fields=["attempts_used", "is_solved"])
+
+        response_serializer = GuessResponseSerializer({"game": game, "guess": guess})
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(tags=["Games"], responses=GuessHistoryResponseSerializer)
+    @action(detail=True, methods=["get"], url_path="history", serializer_class=GuessHistoryResponseSerializer)
+    def history(self, request, *args, **kwargs) -> Response:
+        game = self.get_object()
+        serializer = GuessHistoryResponseSerializer({"game": game, "history": list(game.guesses.all())})
+        return Response(serializer.data, status=status.HTTP_200_OK)

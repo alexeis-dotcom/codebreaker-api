@@ -16,4 +16,3 @@ class GameAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
     readonly_fields = ("attempts_used", "created_at")
     inlines = [GameGuessInline]
-

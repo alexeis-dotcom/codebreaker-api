@@ -1,11 +1,8 @@
-from django.urls import path
+from rest_framework.routers import SimpleRouter
 
-from .views import check_guess, create_game, game_detail, guess_history
+from .views import GameViewSet
 
-urlpatterns = [
-    path("games/", create_game, name="create-game"),
-    path("games/<int:game_id>/guess/", check_guess, name="check-guess"),
-    path("games/<int:game_id>/", game_detail, name="game-detail"),
-    path("games/<int:game_id>/history/", guess_history, name="guess-history"),
-]
+router = SimpleRouter()
+router.register("games", GameViewSet, basename="games")
 
+urlpatterns = router.urls
